@@ -47,13 +47,14 @@ const char *REGNAME[32] = {
     "t6",   // x31
 };
 
-const char *INSTNAME[]{
+const char *INSTNAME[]{//这里可以加上两条指令
     "lui",  "auipc", "jal",   "jalr",  "beq",   "bne",  "blt",  "bge",  "bltu",
     "bgeu", "lb",    "lh",    "lw",    "ld",    "lbu",  "lhu",  "sb",   "sh",
     "sw",   "sd",    "addi",  "slti",  "sltiu", "xori", "ori",  "andi", "slli",
     "srli", "srai",  "add",   "sub",   "sll",   "slt",  "sltu", "xor",  "srl",
     "sra",  "or",    "and",   "ecall", "addiw", "mul",  "mulh", "div",  "rem",
     "lwu",  "slliw", "srliw", "sraiw", "addw",  "subw", "sllw", "srlw", "sraw",
+    "lr.d", "sc.d"
 };
 
 } // namespace RISCV
@@ -172,7 +173,7 @@ void Simulator::fetch() {
   uint32_t inst = this->memory->getInt(this->pc);
   uint32_t len = 4;
 
-  if (this->verbose) {
+  if (this->verbose) {//冗长
     printf("Fetched instruction 0x%.8x at address 0x%llx\n", inst, this->pc);
   }
 
@@ -211,9 +212,14 @@ void Simulator::decode() {
   // Reg for 32bit instructions
   if (this->fReg.len == 4) // 32 bit instruction
   {
-    uint32_t opcode = inst & 0x7F;
+    uint32_t opcode = inst & 0x7F;//opcode为指令的前7位
     uint32_t funct3 = (inst >> 12) & 0x7;
     uint32_t funct7 = (inst >> 25) & 0x7F;
+    /*for lr and sc*/
+    uint32_t aq = (inst >> 26) & 0x1;
+    uint32_t rl = (inst >> 25) & 0x1;
+    uint32_t funct5=(inst >> 27) & 0x1F;
+    /*end*/
     RegId rd = (inst >> 7) & 0x1F;
     RegId rs1 = (inst >> 15) & 0x1F;
     RegId rs2 = (inst >> 20) & 0x1F;
@@ -229,8 +235,34 @@ void Simulator::decode() {
                              ((inst >> 1) & 0x7F800) | ((inst >> 12) & 0x80000))
                          << 12 >>
                      11;
-
+    atom_operation=3;//1:lr 2:sc
     switch (opcode) {
+    case OP_ATOM:
+      op1=this->reg[rs1];//reg表示寄存器数组，rs是我们之前求出来的一个index
+      op2=this->reg[rs2];
+      reg1=rs1;
+      reg2=rs2;
+      dest=rd;
+      atom=true;//记录这是原子操作
+      
+      switch (funct5)
+      {
+      case 0x2:
+        instname="lr.d";
+        insttype=LRD;
+        atom_operation=1;
+        break;
+      case 0x3:
+        atom_operation=2;
+        instname="sc.d";
+        insttype=SCD;
+        break;
+      }
+      op1str = REGNAME[rs1];
+      op2str = REGNAME[rs2];
+      deststr = REGNAME[rd];
+      inststr = instname + " "+ deststr+"," +op2str+"(" + op1str + ")";
+      break;
     case OP_REG:
       op1 = this->reg[rs1];
       op2 = this->reg[rs2];
@@ -921,6 +953,20 @@ void Simulator::excecute() {
     out = handleSystemCall(op1, op2);
     writeReg = true;
     break;
+  case LRD://changed,LRD需要读取内存（rs1），并将内存里的值给rd寄存器
+    readMem = true;//read memory
+    writeReg = true;//write rd
+    memLen = 8;//long int
+    out = op1+0;//rs1
+    readSignExt = true;//拓展信号，带符号拓展，目前尚不清楚什么意思。模仿ld写的 应该没有错误
+    break;
+  case SCD://changed，SCD需要把rs2的值写入内存（rs1），并将写的结果返回给rd因此也需要写寄存器
+    writeMem = true;//写内存
+    memLen = 8;//long int
+    writeReg=true;//写rd
+    out = op1+0;//写的（rs1）
+    op2 = op2 & 0xFFFFFFFF;//写的值是op2
+    break;
   default:
     this->panic("Unknown instruction type %d\n", inst);
   }
@@ -1022,7 +1068,19 @@ void Simulator::memoryAccess() {
 
   bool good = true;
   uint32_t cycles = 0;
-
+  if(atom==true && writeMem){
+    std::vector<int64_t>::iterator it=std::find(memReserv.begin(),memReserv.end(),op2);
+    if(it!=memReserv.end()){//可以写入
+        write_rd=true;
+        memReserv.clear();
+    }else{//不可以写入
+      write_rd=false;
+      memReserv.clear();
+      good=true;
+      goto skip;
+    }
+    
+  }
   if (writeMem) {
     switch (memLen) {
     case 1:
@@ -1041,12 +1099,16 @@ void Simulator::memoryAccess() {
       this->panic("Unknown memLen %d\n", memLen);
     }
   }
+  skip:
 
   if (!good) {
     this->panic("Invalid Mem Access!\n");
   }
 
-  if (readMem) {
+  if (readMem) {//暂时用out存储的读出来的值，readsign表示是否带符号
+    if(atom==true){
+      memReserv.push_back(out);
+    }
     switch (memLen) {
     case 1:
       if (readSignExt) {
@@ -1072,6 +1134,8 @@ void Simulator::memoryAccess() {
     case 8:
       if (readSignExt) {
         out = (int64_t)this->memory->getLong(out, &cycles);
+        //if(atom==true)
+        std::cout<<"the out is"<<out<<std::endl;     
       } else {
         out = (uint64_t)this->memory->getLong(out, &cycles);
       }
@@ -1137,7 +1201,7 @@ void Simulator::memoryAccess() {
   this->mRegNew.out = out;
 }
 
-void Simulator::writeBack() {
+void Simulator::writeBack() {//这里应该修改rd，我还没有修改
   if (this->mReg.stall) {
     if (verbose) {
       printf("WriteBack: stall\n");
@@ -1189,12 +1253,16 @@ void Simulator::writeBack() {
         }
       }
     }
-
+    if(write_rd==true && atom==true && (atom_operation==2)) {this->reg[this->mReg.destReg] = 0;goto end;}
+    if(write_rd==false && atom==true&&(atom_operation==2)) {this->reg[this->mReg.destReg] = 1;goto end;}
     // Real Write Back
     this->reg[this->mReg.destReg] = this->mReg.out;
+    end:
+    int lalala=0;
   }
 
   // this->pc = this->mReg.pc;
+  atom=false;//取消atom
 }
 
 int64_t Simulator::handleSystemCall(int64_t op1, int64_t op2) {
@@ -1319,3 +1387,4 @@ void Simulator::panic(const char *format, ...) {
   fprintf(stderr, "Execution history and memory dump in dump.txt\n");
   exit(-1);
 }
+

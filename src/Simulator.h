@@ -118,6 +118,8 @@ enum Inst {
   SLLW = 51,
   SRLW = 52,
   SRAW = 53,
+  LRD = 54,
+  SCD =55,
   UNKNOWN = -1,
 };
 extern const char *INSTNAME[];
@@ -135,6 +137,7 @@ const int OP_JAL = 0x6F;
 const int OP_JALR = 0x67;
 const int OP_IMM32 = 0x1B;
 const int OP_32 = 0x3B;
+const int OP_ATOM=0x2F;/*for lr sc*/
 
 inline bool isBranch(Inst inst) {
   if (inst == BEQ || inst == BNE || inst == BLT || inst == BGE ||
@@ -189,6 +192,10 @@ public:
   void printStatistics();
 
 private:
+  std::vector<int64_t> memReserv;
+  bool atom=false;
+  bool write_rd=false;
+  int64_t atom_operation;
   struct FReg {
     // Control Signals
     bool bubble;
