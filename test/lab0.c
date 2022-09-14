@@ -9,25 +9,22 @@
 int CAS(long* dest, long new_value, long old_value) {
   int ret = 0;
   // TODO: write your code here
-  long *temp=dest;
   long memLoaded=100;
-
   long scBit;
   retry:
   asm volatile (
-        "lr.d %[mem], (%[dst]);"
-        :[mem]"=r"(memLoaded)
+        "lr.d %[mem], (%[dst])"
+        :[mem]"=&r"(memLoaded)
         :[dst]"r"(dest)
       );
-  print_d(memLoaded);
-  if (memLoaded!=old_value){
+  if (*(long int *)memLoaded!=old_value){
     ret=0;
     return ret;
   }else{
     asm volatile (
-        "sc.d %[scbit], %[new], (%[dst]);"
-        :[scbit]"=r"(scBit)
-        :[dst]"r"(dest),[new]"r"(new_value)
+        "sc.d %[scbit], %[new], (%[old]);"
+        :[scbit]"=&r"(scBit)
+        :[new]"r"(new_value),[old]"r"(dest)
         :
       );
     if(scBit!=0){
@@ -37,8 +34,6 @@ int CAS(long* dest, long new_value, long old_value) {
       return ret;
     }
   }
-
-  
 }
 
 static long dst;
@@ -46,9 +41,9 @@ static long dst;
 int main() {
   int res;
 
-  dst = 1;
+  dst = 6;
 
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < 10; ++i) {
     res = CAS(&dst, 211, i);
     if (res)
       print_s("CAS SUCCESS\n");

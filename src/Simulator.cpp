@@ -235,25 +235,33 @@ void Simulator::decode() {
                              ((inst >> 1) & 0x7F800) | ((inst >> 12) & 0x80000))
                          << 12 >>
                      11;
-    atom_operation=3;//1:lr 2:sc
+    atom_operation=0;//1:lr 2:sc
     switch (opcode) {
     case OP_ATOM:
-      op1=this->reg[rs1];//reg表示寄存器数组，rs是我们之前求出来的一个index
-      op2=this->reg[rs2];
-      reg1=rs1;
-      reg2=rs2;
-      dest=rd;
       atom=true;//记录这是原子操作
-      
       switch (funct5)
       {
       case 0x2:
+        op1=this->reg[rs1];//reg表示寄存器数组，rs是我们之前求出来的一个index
+        //op2=this->reg[rs2];
+        reg1=rs1;
+        //reg2=rs2;
+        dest=rd;
         instname="lr.d";
         insttype=LRD;
-        atom_operation=1;
+        atom_operation=2;
+        offset=0;
+        atom=true;
         break;
       case 0x3:
-        atom_operation=2;
+        op1=this->reg[rs1];//reg表示寄存器数组，rs是我们之前求出来的一个index
+        op2=this->reg[rs2];
+        reg1=rs1;
+        reg2=rs2;
+        atom=true;
+        dest=rd;
+        atom_operation=3;
+        offset=0;
         instname="sc.d";
         insttype=SCD;
         break;
@@ -724,7 +732,6 @@ void Simulator::excecute() {
   }
 
   this->history.instCount++;
-
   Inst inst = this->dReg.inst;
   int64_t op1 = this->dReg.op1;
   int64_t op2 = this->dReg.op2;
@@ -954,17 +961,19 @@ void Simulator::excecute() {
     writeReg = true;
     break;
   case LRD://changed,LRD需要读取内存（rs1），并将内存里的值给rd寄存器
+    atom=true;
     readMem = true;//read memory
     writeReg = true;//write rd
     memLen = 8;//long int
-    out = op1+0;//rs1
+    out = op1+offset;//rs1
     readSignExt = true;//拓展信号，带符号拓展，目前尚不清楚什么意思。模仿ld写的 应该没有错误
     break;
   case SCD://changed，SCD需要把rs2的值写入内存（rs1），并将写的结果返回给rd因此也需要写寄存器
+    atom=true;
     writeMem = true;//写内存
     memLen = 8;//long int
     writeReg=true;//写rd
-    out = op1+0;//写的（rs1）
+    out = op1+offset;//写的（rs1）
     op2 = op2 & 0xFFFFFFFF;//写的值是op2
     break;
   default:
@@ -1079,7 +1088,6 @@ void Simulator::memoryAccess() {
       good=true;
       goto skip;
     }
-    
   }
   if (writeMem) {
     switch (memLen) {
@@ -1104,9 +1112,8 @@ void Simulator::memoryAccess() {
   if (!good) {
     this->panic("Invalid Mem Access!\n");
   }
-
-  if (readMem) {//暂时用out存储的读出来的值，readsign表示是否带符号
-    if(atom==true){
+  if (readMem) {//暂时用out存储的读出来的值，readsign表示是否带符号,lr指令
+    if(atom==true){                                         
       memReserv.push_back(out);
     }
     switch (memLen) {
@@ -1133,9 +1140,10 @@ void Simulator::memoryAccess() {
       break;
     case 8:
       if (readSignExt) {
+        //if(atom==true){std::cout<<"out value is "<<out<<std::endl;}
         out = (int64_t)this->memory->getLong(out, &cycles);
-        //if(atom==true)
-        std::cout<<"the out is"<<out<<std::endl;     
+        //if(atom==true){std::cout<<"out value is "<<out<<std::endl;dumpHistory();}
+        
       } else {
         out = (uint64_t)this->memory->getLong(out, &cycles);
       }
@@ -1253,8 +1261,8 @@ void Simulator::writeBack() {//这里应该修改rd，我还没有修改
         }
       }
     }
-    if(write_rd==true && atom==true && (atom_operation==2)) {this->reg[this->mReg.destReg] = 0;goto end;}
-    if(write_rd==false && atom==true&&(atom_operation==2)) {this->reg[this->mReg.destReg] = 1;goto end;}
+    if(write_rd==true && atom==true && (atom_operation==3)) {this->reg[this->mReg.destReg] = 0;goto end;}
+    if(write_rd==false && atom==true&&(atom_operation==3)) {this->reg[this->mReg.destReg] = 1;goto end;}
     // Real Write Back
     this->reg[this->mReg.destReg] = this->mReg.out;
     end:
