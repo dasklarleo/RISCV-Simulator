@@ -156,7 +156,7 @@ inline bool isJump(Inst inst) {
 
 inline bool isReadMem(Inst inst) {
   if (inst == LB || inst == LH || inst == LW || inst == LD || inst == LBU ||
-      inst == LHU || inst == LWU) {
+      inst == LHU || inst == (LWU ||LRD)) {//inst==LRD不行,但是inst == (LWU ||LRD)就可以,why???
     return true;
   }
   return false;
@@ -174,6 +174,7 @@ public:
   uint64_t anotherPC; // // another possible prediction destination
   uint64_t reg[RISCV::REGNUM];
   uint32_t stackBase;
+  std::vector<int64_t> memReserv;
   uint32_t maximumStackSize;
   MemoryManager *memory;
   BranchPredictor *branchPredictor;
@@ -192,10 +193,8 @@ public:
   void printStatistics();
 
 private:
-  std::vector<int64_t> memReserv;
-  bool atom=false;
-  bool write_rd=false;
-  int64_t atom_operation;
+   
+  
   struct FReg {
     // Control Signals
     bool bubble;
@@ -211,6 +210,7 @@ private:
     uint32_t stall;
     RISCV::RegId rs1, rs2;
 
+    bool atomOperation;
     uint64_t pc;
     RISCV::Inst inst;
     int64_t op1;
@@ -223,7 +223,8 @@ private:
     // Control Signals
     bool bubble;
     uint32_t stall;
-
+    bool atomOperation;
+    bool writeFD;
     uint64_t pc;
     RISCV::Inst inst;
     int64_t op1;
@@ -238,6 +239,8 @@ private:
     bool branch;
   } eReg, eRegNew;
   struct MReg {
+    bool atomOperation;
+    bool writeFD;
     // Control Signals
     bool bubble;
     uint32_t stall;
@@ -277,12 +280,12 @@ private:
     std::string memoryDump;
   } history;
 
-  void fetch();
-  void decode();
-  void excecute();
-  void memoryAccess();
-  void writeBack();
-
+  void fetch( );
+  void decode(std::vector<int64_t> &decodeMemReserv);
+  void excecute(std::vector<int64_t> &decodeMemReserv);
+  void memoryAccess(std::vector<int64_t> &decodeMemReserv);
+  void writeBack(std::vector<int64_t> &decodeMemReserv);
+  std::vector<int64_t> vectorCopy(std::vector<int64_t> src, std::vector<int64_t> dst);
   int64_t handleSystemCall(int64_t op1, int64_t op2);
 
   std::string getRegInfoStr();

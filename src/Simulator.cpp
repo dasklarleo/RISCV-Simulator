@@ -100,7 +100,10 @@ void Simulator::simulate() {
   dReg.bubble = true;
   eReg.bubble = true;
   mReg.bubble = true;
-
+  std::vector<int64_t>decodeMemReserv;
+  std::vector<int64_t>executeMemReserv;
+  std::vector<int64_t>memoryMemReserv;
+  std::vector<int64_t>writebackMemReserv;
   // Main Simulation Loop
   while (true) {
     if (this->reg[0] != 0) {
@@ -121,10 +124,17 @@ void Simulator::simulate() {
     // THE EXECUTION ORDER of these functions are important!!!
     // Changing them will introduce strange bugs
     this->fetch();
-    this->decode();
-    this->excecute();
-    this->memoryAccess();
-    this->writeBack();
+    this->decode(decodeMemReserv);
+    executeMemReserv=vectorCopy(decodeMemReserv,executeMemReserv);
+    
+    this->excecute(executeMemReserv);
+    memoryMemReserv=vectorCopy(executeMemReserv,memoryMemReserv);
+    
+    this->memoryAccess(memoryMemReserv);
+    writebackMemReserv=vectorCopy(memoryMemReserv,writebackMemReserv);
+
+    this->writeBack(writebackMemReserv);
+    decodeMemReserv=vectorCopy(writebackMemReserv,decodeMemReserv);
 
     if (!this->fReg.stall) this->fReg = this->fRegNew;
     else this->fReg.stall--;
@@ -173,7 +183,7 @@ void Simulator::fetch() {
   uint32_t inst = this->memory->getInt(this->pc);
   uint32_t len = 4;
 
-  if (this->verbose) {//冗长
+  if (this->verbose) {
     printf("Fetched instruction 0x%.8x at address 0x%llx\n", inst, this->pc);
   }
 
@@ -185,7 +195,8 @@ void Simulator::fetch() {
   this->pc = this->pc + len;
 }
 
-void Simulator::decode() {
+void Simulator::decode(std::vector<int64_t> &decodeMemeReserv) {
+  //decodeMemeReserv.clear();
   if (this->fReg.stall) {
     if (verbose) {
       printf("Decode: Stall\n");
@@ -235,35 +246,26 @@ void Simulator::decode() {
                              ((inst >> 1) & 0x7F800) | ((inst >> 12) & 0x80000))
                          << 12 >>
                      11;
-    atom_operation=0;//1:lr 2:sc
     switch (opcode) {
     case OP_ATOM:
-      atom=true;//记录这是原子操作
       switch (funct5)
       {
       case 0x2:
         op1=this->reg[rs1];//reg表示寄存器数组，rs是我们之前求出来的一个index
-        //op2=this->reg[rs2];
         reg1=rs1;
-        //reg2=rs2;
         dest=rd;
         instname="lr.d";
         insttype=LRD;
-        atom_operation=2;
-        offset=0;
-        atom=true;
         break;
       case 0x3:
         op1=this->reg[rs1];//reg表示寄存器数组，rs是我们之前求出来的一个index
         op2=this->reg[rs2];
         reg1=rs1;
         reg2=rs2;
-        atom=true;
         dest=rd;
-        atom_operation=3;
-        offset=0;
         instname="sc.d";
         insttype=SCD;
+        this->dRegNew.atomOperation=true;
         break;
       }
       op1str = REGNAME[rs1];
@@ -703,7 +705,7 @@ void Simulator::decode() {
   this->dRegNew.rs1 = reg1;
   this->dRegNew.rs2 = reg2;
   this->dRegNew.pc = this->fReg.pc;
-  this->dRegNew.inst = insttype;
+  this->dRegNew.inst = insttype;//enum编号
   this->dRegNew.predictedBranch = predictedBranch;
   this->dRegNew.dest = dest;
   this->dRegNew.op1 = op1;
@@ -711,7 +713,7 @@ void Simulator::decode() {
   this->dRegNew.offset = offset;
 }
 
-void Simulator::excecute() {
+void Simulator::excecute(std::vector<int64_t> &exeMemeReserv) {
   if (this->dReg.stall) {
     if (verbose) {
       printf("Execute: Stall\n");
@@ -747,7 +749,7 @@ void Simulator::excecute() {
   bool readSignExt = false;
   uint32_t memLen = 0;
   bool branch = false;
-
+  int i=0;
   switch (inst) {
   case LUI:
     writeReg = true;
@@ -961,20 +963,30 @@ void Simulator::excecute() {
     writeReg = true;
     break;
   case LRD://changed,LRD需要读取内存（rs1），并将内存里的值给rd寄存器
-    atom=true;
     readMem = true;//read memory
     writeReg = true;//write rd
     memLen = 8;//long int
-    out = op1+offset;//rs1
-    readSignExt = true;//拓展信号，带符号拓展，目前尚不清楚什么意思。模仿ld写的 应该没有错误
+    out = op1;//rs1
+    exeMemeReserv.push_back(out);
+    readSignExt = true;
     break;
   case SCD://changed，SCD需要把rs2的值写入内存（rs1），并将写的结果返回给rd因此也需要写寄存器
-    atom=true;
-    writeMem = true;//写内存
+    out = op1;//写的（rs1）
+    op2 = op2 & 0xFFFFFFFF;//写的值是op2  
     memLen = 8;//long int
-    writeReg=true;//写rd
-    out = op1+offset;//写的（rs1）
-    op2 = op2 & 0xFFFFFFFF;//写的值是op2
+    this->eRegNew.atomOperation=true;
+    for (;i<exeMemeReserv.size();++i)
+      if(exeMemeReserv[i]==out) break;
+    if (i<exeMemeReserv.size()){
+      writeMem = true;//写内存     
+      writeReg=true;//写rd=0
+      this->eRegNew.writeFD=true;
+    }else{
+      writeMem = false;//不写内存
+      writeReg=true;//写rd！=0
+    }
+    i=0;
+    exeMemeReserv.clear();
     break;
   default:
     this->panic("Unknown instruction type %d\n", inst);
@@ -1048,7 +1060,8 @@ void Simulator::excecute() {
   this->eRegNew.branch = branch;
 }
 
-void Simulator::memoryAccess() {
+void Simulator::memoryAccess(std::vector<int64_t> &memMemeReserv) {
+
   if (this->eReg.stall) {
     if (verbose) {
       printf("Memory Access: Stall\n");
@@ -1074,48 +1087,32 @@ void Simulator::memoryAccess() {
   bool readMem = this->eReg.readMem;
   bool readSignExt = this->eReg.readSignExt;
   uint32_t memLen = this->eReg.memLen;
-
+  
   bool good = true;
-  uint32_t cycles = 0;
-  if(atom==true && writeMem){
-    std::vector<int64_t>::iterator it=std::find(memReserv.begin(),memReserv.end(),op2);
-    if(it!=memReserv.end()){//可以写入
-        write_rd=true;
-        memReserv.clear();
-    }else{//不可以写入
-      write_rd=false;
-      memReserv.clear();
-      good=true;
-      goto skip;
-    }
-  }
-  if (writeMem) {
+  uint32_t cycles = 0;  
+  if(writeMem){
     switch (memLen) {
-    case 1:
-      good = this->memory->setByte(out, op2, &cycles);
-      break;
-    case 2:
-      good = this->memory->setShort(out, op2, &cycles);
-      break;
-    case 4:
-      good = this->memory->setInt(out, op2, &cycles);
-      break;
-    case 8:
-      good = this->memory->setLong(out, op2, &cycles);
-      break;
-    default:
-      this->panic("Unknown memLen %d\n", memLen);
-    }
+        case 1:
+          good = this->memory->setByte(out, op2, &cycles);
+          break;
+        case 2:
+          good = this->memory->setShort(out, op2, &cycles);
+          break;
+        case 4:
+          good = this->memory->setInt(out, op2, &cycles);
+          break;
+        case 8:
+          good = this->memory->setLong(out, op2, &cycles);
+          break;
+        default:
+          this->panic("Unknown memLen %d\n", memLen);
+        }
   }
-  skip:
-
   if (!good) {
     this->panic("Invalid Mem Access!\n");
   }
+  
   if (readMem) {//暂时用out存储的读出来的值，readsign表示是否带符号,lr指令
-    if(atom==true){                                         
-      memReserv.push_back(out);
-    }
     switch (memLen) {
     case 1:
       if (readSignExt) {
@@ -1140,10 +1137,7 @@ void Simulator::memoryAccess() {
       break;
     case 8:
       if (readSignExt) {
-        //if(atom==true){std::cout<<"out value is "<<out<<std::endl;}
-        out = (int64_t)this->memory->getLong(out, &cycles);
-        //if(atom==true){std::cout<<"out value is "<<out<<std::endl;dumpHistory();}
-        
+        out = (int64_t)this->memory->getLong(out, &cycles);//可以正常运行，并且out也被添加到了里面
       } else {
         out = (uint64_t)this->memory->getLong(out, &cycles);
       }
@@ -1152,8 +1146,6 @@ void Simulator::memoryAccess() {
       this->panic("Unknown memLen %d\n", memLen);
     }
   }
-
-  //if (cycles != 0) printf("%d\n", cycles);
   this->history.cycleCount += cycles;
 
   if (verbose) {
@@ -1207,9 +1199,14 @@ void Simulator::memoryAccess() {
   this->mRegNew.destReg = destReg;
   this->mRegNew.writeReg = writeReg;
   this->mRegNew.out = out;
+  this->mRegNew.atomOperation=this->eReg.atomOperation;
+  this->mRegNew.writeFD=this->eReg.writeFD;
+  if(this->eReg.atomOperation==true&&this->eReg.writeFD==true){this->mRegNew.out=0;}
+  if(this->eReg.atomOperation==true&&this->eReg.writeFD==false){this->mRegNew.out=1;}
 }
 
-void Simulator::writeBack() {//这里应该修改rd，我还没有修改
+void Simulator::writeBack(std::vector<int64_t> &wbMemeReserv) {
+ 
   if (this->mReg.stall) {
     if (verbose) {
       printf("WriteBack: stall\n");
@@ -1226,7 +1223,6 @@ void Simulator::writeBack() {//这里应该修改rd，我还没有修改
   if (verbose) {
     printf("WriteBack: %s\n", INSTNAME[this->mReg.inst]);
   }
-
   if (this->mReg.writeReg && this->mReg.destReg != 0) {
     // Check for data hazard and forward data
     if (this->dRegNew.rs1 == this->mReg.destReg) {
@@ -1261,16 +1257,23 @@ void Simulator::writeBack() {//这里应该修改rd，我还没有修改
         }
       }
     }
-    if(write_rd==true && atom==true && (atom_operation==3)) {this->reg[this->mReg.destReg] = 0;goto end;}
-    if(write_rd==false && atom==true&&(atom_operation==3)) {this->reg[this->mReg.destReg] = 1;goto end;}
     // Real Write Back
-    this->reg[this->mReg.destReg] = this->mReg.out;
-    end:
-    int lalala=0;
+    if((this->mReg.writeFD==true)&&(this->mReg.atomOperation==true)){//sc成功
+      this->reg[this->mReg.destReg] = 0;
+      std::cout<<"can write to rd. After write rd is "<<this->reg[this->mReg.destReg]<<std::endl;
+      std::cout<<"reg value is "<<this->reg[this->mReg.destReg]<<std::endl;
+      //dumpHistory();
+      return;
+    }else if((this->mReg.writeFD==false)&&(this->mReg.atomOperation==true)){//sc失败
+      std::cout<<"cannot write to rd. After write rd is "<<this->reg[this->mReg.destReg]<<std::endl;
+      std::cout<<"reg value is "<<this->reg[this->mReg.destReg]<<std::endl;
+      this->reg[this->mReg.destReg] = 1;
+      return;
+    }else{//其他的写回
+      this->reg[this->mReg.destReg] = this->mReg.out;
+    } 
   }
-
   // this->pc = this->mReg.pc;
-  atom=false;//取消atom
 }
 
 int64_t Simulator::handleSystemCall(int64_t op1, int64_t op2) {
@@ -1396,3 +1399,10 @@ void Simulator::panic(const char *format, ...) {
   exit(-1);
 }
 
+std::vector<int64_t> Simulator::vectorCopy(std::vector<int64_t> src, std::vector<int64_t> dst){
+  dst.clear();
+  for (int i=0;i<src.size();i++){
+    dst.push_back(src[i]);
+  }
+  return dst;
+}
