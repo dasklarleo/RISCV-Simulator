@@ -1260,13 +1260,13 @@ void Simulator::writeBack(std::vector<int64_t> &wbMemeReserv) {
     // Real Write Back
     if((this->mReg.writeFD==true)&&(this->mReg.atomOperation==true)){//sc成功
       this->reg[this->mReg.destReg] = 0;
-      std::cout<<"can write to rd. After write rd is "<<this->reg[this->mReg.destReg]<<std::endl;
-      std::cout<<"reg value is "<<this->reg[this->mReg.destReg]<<std::endl;
+      std::cout<<"can write to memory. "<<std::endl;
+      //std::cout<<" reg value is "<<this->reg[this->mReg.destReg]<<std::endl;
       //dumpHistory();
       return;
     }else if((this->mReg.writeFD==false)&&(this->mReg.atomOperation==true)){//sc失败
-      std::cout<<"cannot write to rd. After write rd is "<<this->reg[this->mReg.destReg]<<std::endl;
-      std::cout<<"reg value is "<<this->reg[this->mReg.destReg]<<std::endl;
+      std::cout<<"cannot write to memory. The memory address is not reserved "<<std::endl;
+      //std::cout<<"reg value is "<<this->reg[this->mReg.destReg]<<std::endl;
       this->reg[this->mReg.destReg] = 1;
       return;
     }else{//其他的写回

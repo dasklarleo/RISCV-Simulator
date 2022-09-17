@@ -11,7 +11,7 @@ int CAS(long* dest, long new_value, long old_value) {
   int ret = 0;
   
   // TODO: write your code here
-  long scBit=0;
+  long scBit=211;
   long normal=1;
   long memLoaded=100;
   long *temp=&scBit;
@@ -37,8 +37,8 @@ int CAS(long* dest, long new_value, long old_value) {
         "nop;"
         "beq a5, zero, final;"
         "j retry"
-        :[scbit]"=&r"(scBit)
-        :[new]"r"(new_value),[destination]"r"(temp)
+        :
+        :[new]"r"(new_value),[destination]"r"(dest)
         :"a5"
       );
     asm volatile(
