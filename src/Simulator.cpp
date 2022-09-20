@@ -54,7 +54,7 @@ const char *INSTNAME[]{//这里可以加上两条指令
     "srli", "srai",  "add",   "sub",   "sll",   "slt",  "sltu", "xor",  "srl",
     "sra",  "or",    "and",   "ecall", "addiw", "mul",  "mulh", "div",  "rem",
     "lwu",  "slliw", "srliw", "sraiw", "addw",  "subw", "sllw", "srlw", "sraw",
-    "lr.d", "sc.d"
+    "lr.d", "sc.d","lr.w","sc.w"
 };
 
 } // namespace RISCV
@@ -100,10 +100,10 @@ void Simulator::simulate() {
   dReg.bubble = true;
   eReg.bubble = true;
   mReg.bubble = true;
-  std::vector<int64_t>decodeMemReserv;
-  std::vector<int64_t>executeMemReserv;
-  std::vector<int64_t>memoryMemReserv;
-  std::vector<int64_t>writebackMemReserv;
+  std::set<int64_t>decodeMemReserv;
+  std::set<int64_t>executeMemReserv;
+  std::set<int64_t>memoryMemReserv;
+  std::set<int64_t>writebackMemReserv;
   // Main Simulation Loop
   while (true) {
     if (this->reg[0] != 0) {
@@ -125,16 +125,16 @@ void Simulator::simulate() {
     // Changing them will introduce strange bugs
     this->fetch();
     this->decode(decodeMemReserv);
-    executeMemReserv=vectorCopy(decodeMemReserv,executeMemReserv);
+    executeMemReserv=setCopy(decodeMemReserv,executeMemReserv);
     
     this->excecute(executeMemReserv);
-    memoryMemReserv=vectorCopy(executeMemReserv,memoryMemReserv);
+    memoryMemReserv=setCopy(executeMemReserv,memoryMemReserv);
     
     this->memoryAccess(memoryMemReserv);
-    writebackMemReserv=vectorCopy(memoryMemReserv,writebackMemReserv);
+    writebackMemReserv=setCopy(memoryMemReserv,writebackMemReserv);
 
     this->writeBack(writebackMemReserv);
-    decodeMemReserv=vectorCopy(writebackMemReserv,decodeMemReserv);
+    decodeMemReserv=setCopy(writebackMemReserv,decodeMemReserv);
 
     if (!this->fReg.stall) this->fReg = this->fRegNew;
     else this->fReg.stall--;
@@ -195,7 +195,7 @@ void Simulator::fetch() {
   this->pc = this->pc + len;
 }
 
-void Simulator::decode(std::vector<int64_t> &decodeMemeReserv) {
+void Simulator::decode(std::set<int64_t> &decodeMemeReserv) {
   //decodeMemeReserv.clear();
   if (this->fReg.stall) {
     if (verbose) {
@@ -230,6 +230,7 @@ void Simulator::decode(std::vector<int64_t> &decodeMemeReserv) {
     uint32_t aq = (inst >> 26) & 0x1;
     uint32_t rl = (inst >> 25) & 0x1;
     uint32_t funct5=(inst >> 27) & 0x1F;
+    uint32_t LRSC_len=(inst >> 12) & 0x7;
     /*end*/
     RegId rd = (inst >> 7) & 0x1F;
     RegId rs1 = (inst >> 15) & 0x1F;
@@ -254,8 +255,17 @@ void Simulator::decode(std::vector<int64_t> &decodeMemeReserv) {
         op1=this->reg[rs1];//reg表示寄存器数组，rs是我们之前求出来的一个index
         reg1=rs1;
         dest=rd;
-        instname="lr.d";
-        insttype=LRD;
+        switch (LRSC_len)
+        {
+        case 3:
+          instname="lr.d";
+          insttype=LRD;
+          break;
+        case 2:
+          instname="lr.w";
+          insttype=LRW;
+          break;
+        }
         break;
       case 0x3:
         op1=this->reg[rs1];//reg表示寄存器数组，rs是我们之前求出来的一个index
@@ -263,8 +273,17 @@ void Simulator::decode(std::vector<int64_t> &decodeMemeReserv) {
         reg1=rs1;
         reg2=rs2;
         dest=rd;
-        instname="sc.d";
-        insttype=SCD;
+        switch (LRSC_len)
+        {
+        case 3:
+          instname="sc.d";
+          insttype=SCD;
+          break;
+        case 2:
+          instname="sc.w";
+          insttype=SCW;
+          break;
+        }
         this->dRegNew.atomOperation=true;
         break;
       }
@@ -713,7 +732,7 @@ void Simulator::decode(std::vector<int64_t> &decodeMemeReserv) {
   this->dRegNew.offset = offset;
 }
 
-void Simulator::excecute(std::vector<int64_t> &exeMemeReserv) {
+void Simulator::excecute(std::set<int64_t> &exeMemeReserv) {
   if (this->dReg.stall) {
     if (verbose) {
       printf("Execute: Stall\n");
@@ -749,7 +768,7 @@ void Simulator::excecute(std::vector<int64_t> &exeMemeReserv) {
   bool readSignExt = false;
   uint32_t memLen = 0;
   bool branch = false;
-  int i=0;
+  std::set<int64_t>:: iterator setIterator=exeMemeReserv.begin();
   switch (inst) {
   case LUI:
     writeReg = true;
@@ -967,7 +986,15 @@ void Simulator::excecute(std::vector<int64_t> &exeMemeReserv) {
     writeReg = true;//write rd
     memLen = 8;//long int
     out = op1;//rs1
-    exeMemeReserv.push_back(out);
+    exeMemeReserv.insert(out);
+    readSignExt = true;
+    break;
+  case LRW://changed,LRD需要读取内存（rs1），并将内存里的值给rd寄存器
+    readMem = true;//read memory
+    writeReg = true;//write rd
+    memLen = 4;//long int
+    out = op1;//rs1
+    exeMemeReserv.insert(out);
     readSignExt = true;
     break;
   case SCD://changed，SCD需要把rs2的值写入内存（rs1），并将写的结果返回给rd因此也需要写寄存器
@@ -975,9 +1002,9 @@ void Simulator::excecute(std::vector<int64_t> &exeMemeReserv) {
     op2 = op2 & 0xFFFFFFFF;//写的值是op2  
     memLen = 8;//long int
     this->eRegNew.atomOperation=true;
-    for (;i<exeMemeReserv.size();++i)
-      if(exeMemeReserv[i]==out) break;
-    if (i<exeMemeReserv.size()){
+    for(setIterator=exeMemeReserv.begin();setIterator!=exeMemeReserv.end();setIterator++)
+      if(*setIterator==out) break;
+    if (setIterator!=exeMemeReserv.end()){
       writeMem = true;//写内存     
       writeReg=true;//写rd=0
       this->eRegNew.writeFD=true;
@@ -985,7 +1012,23 @@ void Simulator::excecute(std::vector<int64_t> &exeMemeReserv) {
       writeMem = false;//不写内存
       writeReg=true;//写rd！=0
     }
-    i=0;
+    exeMemeReserv.clear();
+    break;
+  case SCW://changed，SCD需要把rs2的值写入内存（rs1），并将写的结果返回给rd因此也需要写寄存器
+    out = op1;//写的（rs1）
+    op2 = (op2 & 0x0000FFFF);//写的值是op2  
+    memLen = 4;//long int
+    this->eRegNew.atomOperation=true;
+    for(setIterator=exeMemeReserv.begin();setIterator!=exeMemeReserv.end();setIterator++)
+      if(*setIterator==out) break;
+    if (setIterator!=exeMemeReserv.end()){
+      writeMem = true;//写内存     
+      writeReg=true;//写rd=0
+      this->eRegNew.writeFD=true;
+    }else{
+      writeMem = false;//不写内存
+      writeReg=true;//写rd！=0
+    }
     exeMemeReserv.clear();
     break;
   default:
@@ -1060,7 +1103,7 @@ void Simulator::excecute(std::vector<int64_t> &exeMemeReserv) {
   this->eRegNew.branch = branch;
 }
 
-void Simulator::memoryAccess(std::vector<int64_t> &memMemeReserv) {
+void Simulator::memoryAccess(std::set<int64_t> &memMemeReserv) {
 
   if (this->eReg.stall) {
     if (verbose) {
@@ -1205,7 +1248,7 @@ void Simulator::memoryAccess(std::vector<int64_t> &memMemeReserv) {
   if(this->eReg.atomOperation==true&&this->eReg.writeFD==false){this->mRegNew.out=1;}
 }
 
-void Simulator::writeBack(std::vector<int64_t> &wbMemeReserv) {
+void Simulator::writeBack(std::set<int64_t> &wbMemeReserv) {
  
   if (this->mReg.stall) {
     if (verbose) {
@@ -1399,10 +1442,9 @@ void Simulator::panic(const char *format, ...) {
   exit(-1);
 }
 
-std::vector<int64_t> Simulator::vectorCopy(std::vector<int64_t> src, std::vector<int64_t> dst){
+std::set<int64_t> Simulator::setCopy(std::set<int64_t> src, std::set<int64_t> dst){
   dst.clear();
-  for (int i=0;i<src.size();i++){
-    dst.push_back(src[i]);
-  }
+  std::set<int64_t>:: iterator setIterator=src.begin();
+  for(setIterator = src.begin();setIterator != src.end();setIterator++) dst.insert(*setIterator);
   return dst;
 }

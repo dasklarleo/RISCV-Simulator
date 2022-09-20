@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-
+#include <set>
 #include "BranchPredictor.h"
 #include "MemoryManager.h"
 
@@ -120,6 +120,8 @@ enum Inst {
   SRAW = 53,
   LRD = 54,
   SCD =55,
+  LRW = 56,
+  SCW =57,
   UNKNOWN = -1,
 };
 extern const char *INSTNAME[];
@@ -156,7 +158,7 @@ inline bool isJump(Inst inst) {
 
 inline bool isReadMem(Inst inst) {
   if (inst == LB || inst == LH || inst == LW || inst == LD || inst == LBU ||
-      inst == LHU || inst == (LWU ||LRD)) {//inst==LRD不行,但是inst == (LWU ||LRD)就可以,why???
+      inst == LHU || inst == (LWU || LRD||LRW)) {//inst==LRD不行,但是inst == (LWU ||LRD)就可以,why???
     return true;
   }
   return false;
@@ -174,7 +176,6 @@ public:
   uint64_t anotherPC; // // another possible prediction destination
   uint64_t reg[RISCV::REGNUM];
   uint32_t stackBase;
-  std::vector<int64_t> memReserv;
   uint32_t maximumStackSize;
   MemoryManager *memory;
   BranchPredictor *branchPredictor;
@@ -281,11 +282,11 @@ private:
   } history;
 
   void fetch( );
-  void decode(std::vector<int64_t> &decodeMemReserv);
-  void excecute(std::vector<int64_t> &decodeMemReserv);
-  void memoryAccess(std::vector<int64_t> &decodeMemReserv);
-  void writeBack(std::vector<int64_t> &decodeMemReserv);
-  std::vector<int64_t> vectorCopy(std::vector<int64_t> src, std::vector<int64_t> dst);
+  void decode(std::set<int64_t> &decodeMemReserv);
+  void excecute(std::set<int64_t> &decodeMemReserv);
+  void memoryAccess(std::set<int64_t> &decodeMemReserv);
+  void writeBack(std::set<int64_t> &decodeMemReserv);
+  std::set<int64_t> setCopy(std::set<int64_t> src, std::set<int64_t> dst);
   int64_t handleSystemCall(int64_t op1, int64_t op2);
 
   std::string getRegInfoStr();
