@@ -50,8 +50,7 @@ public:
     uint64_t totalCycles;
   };
 
-  Cache(MemoryManager *manager, Policy policy, Cache *lowerCache = nullptr,
-        bool writeBack = true, bool writeAllocate = true);
+  Cache(MemoryManager *manager, Policy policy,bool exclusion, Cache *lowerCache = nullptr,bool writeBack = true, bool writeAllocate = true);
 
   bool inCache(uint32_t addr);
   uint32_t getBlockId(uint32_t addr);
@@ -67,6 +66,7 @@ private:
   uint32_t referenceCounter;
   bool writeBack;     // default true
   bool writeAllocate; // default true
+  bool exclusion;     //default false
   MemoryManager *memory;
   Cache *lowerCache;
   Policy policy;

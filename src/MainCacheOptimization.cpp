@@ -25,8 +25,8 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  Cache::Policy l1policy, l2policy;
-  l1policy.cacheSize = 32 * 1024;
+  Cache::Policy l1policy, l2policy,l3policy;
+  l1policy.cacheSize = 1024*32 * 1024;
   l1policy.blockSize = 64;
   l1policy.blockNum = 32 * 1024 / 64;
   l1policy.associativity = 8;
@@ -39,12 +39,20 @@ int main(int argc, char **argv) {
   l2policy.hitLatency = 8;
   l2policy.missLatency = 100;
 
+  l3policy.cacheSize =8* 1024 * 1024;
+  l3policy.blockSize = 64;
+  l3policy.blockNum = 256 * 1024 / 64;
+  l3policy.associativity = 8;
+  l3policy.hitLatency = 20;
+  l3policy.missLatency = 100;
+
   // Initialize memory and cache
   MemoryManager *memory = nullptr;
-  Cache *l1cache = nullptr, *l2cache = nullptr;
+  Cache *l1cache = nullptr, *l2cache = nullptr, *l3cache = nullptr;
   memory = new MemoryManager();
-  l2cache = new Cache(memory, l2policy);
-  l1cache = new Cache(memory, l1policy, l2cache);
+  l3cache = new Cache(memory, l2policy,true);
+  l2cache = new Cache(memory, l2policy,true,l3cache);
+  l1cache = new Cache(memory, l1policy,true, l2cache);
   memory->setCache(l1cache);
 
   // Read and execute trace in cache-trace/ folder
@@ -78,6 +86,7 @@ int main(int argc, char **argv) {
 
   delete l1cache;
   delete l2cache;
+  delete l3cache;
   delete memory;
   return 0;
 }

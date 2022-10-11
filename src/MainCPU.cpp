@@ -42,30 +42,30 @@ int main(int argc, char **argv) {
   // Init cache
   Cache::Policy l1Policy, l2Policy, l3Policy;
 
-  l1Policy.cacheSize = 32 * 1024;
+  l1Policy.cacheSize = 1024;
   l1Policy.blockSize = 64;
   l1Policy.blockNum = l1Policy.cacheSize / l1Policy.blockSize;
   l1Policy.associativity = 8;
-  l1Policy.hitLatency = 0;
+  l1Policy.hitLatency = 2;
   l1Policy.missLatency = 8;
 
-  l2Policy.cacheSize = 256 * 1024;
+  l2Policy.cacheSize = 32 *1024;
   l2Policy.blockSize = 64;
   l2Policy.blockNum = l2Policy.cacheSize / l2Policy.blockSize;
-  l2Policy.associativity = 8;
+  l2Policy.associativity = 16;
   l2Policy.hitLatency = 8;
   l2Policy.missLatency = 20;
 
-  l3Policy.cacheSize = 8 * 1024 * 1024;
+  l3Policy.cacheSize = 32 * 1024*1024;
   l3Policy.blockSize = 64;
   l3Policy.blockNum = l3Policy.cacheSize / l3Policy.blockSize;
-  l3Policy.associativity = 8;
+  l3Policy.associativity = 32;
   l3Policy.hitLatency = 20;
   l3Policy.missLatency = 100;
 
-  l3Cache = new Cache(&memory, l3Policy);
-  l2Cache = new Cache(&memory, l2Policy, l3Cache);
-  l1Cache = new Cache(&memory, l1Policy, l2Cache);
+  l3Cache = new Cache(&memory, l3Policy,false, nullptr);
+  l2Cache = new Cache(&memory, l2Policy,false, l3Cache);
+  l1Cache = new Cache(&memory, l1Policy,false, l2Cache);
 
   memory.setCache(l1Cache);
 
