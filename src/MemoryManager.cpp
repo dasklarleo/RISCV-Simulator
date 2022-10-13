@@ -172,12 +172,12 @@ bool MemoryManager::setLong(uint32_t addr, uint64_t val, uint32_t *cycles) {
 uint64_t MemoryManager::getLong(uint32_t addr, uint32_t *cycles) {
   uint64_t b1 = this->getByte(addr, cycles);
   uint64_t b2 = this->getByte(addr + 1);
-  uint64_t b3 = this->getByte(addr + 2);
-  uint64_t b4 = this->getByte(addr + 3);
-  uint64_t b5 = this->getByte(addr + 4);
-  uint64_t b6 = this->getByte(addr + 5);
-  uint64_t b7 = this->getByte(addr + 6);
-  uint64_t b8 = this->getByte(addr + 7);
+  uint64_t b3 = this->getByte(addr + 2 );
+  uint64_t b4 = this->getByte(addr + 3 );
+  uint64_t b5 = this->getByte(addr + 4 );
+  uint64_t b6 = this->getByte(addr + 5 );
+  uint64_t b7 = this->getByte(addr + 6 );
+  uint64_t b8 = this->getByte(addr + 7 );
   return b1 + (b2 << 8) + (b3 << 16) + (b4 << 24) + (b5 << 32) + (b6 << 40) +
          (b7 << 48) + (b8 << 56);
 }

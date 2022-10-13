@@ -6,11 +6,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <assert.h>
 
 #include "Cache.h"
 //policy是这个cache策略，记录了怎么写怎么替换每个块的大小
-Cache::Cache(MemoryManager *manager, Policy policy,bool exclusion, Cache *lowerCache,
-             bool writeBack, bool writeAllocate) {
+Cache::Cache(MemoryManager *manager, Policy policy, bool exclusion, Cache *lowerCache,
+             bool writeBack, bool writeAllocate, bool samplerExist,sampler* s) {
   this->referenceCounter = 0;//LRU
   this->memory = manager;//内存
   this->policy = policy;//cache的策略，包含了cache的大小、路数、block的大小、hit或者not hit的各自的延迟
@@ -28,6 +29,8 @@ Cache::Cache(MemoryManager *manager, Policy policy,bool exclusion, Cache *lowerC
   this->writeBack = writeBack;
   this->writeAllocate = writeAllocate;
   this->exclusion=exclusion;
+  this->samplerExist=samplerExist;
+  this->s=s;
 }
 
 bool Cache::inCache(uint32_t addr) {
@@ -58,19 +61,34 @@ uint8_t Cache::getByte(uint32_t addr, uint32_t *cycles) {
   // If in cache, return directly
   int blockId;
   if ((blockId = this->getBlockId(addr)) != -1) {//被缓存了
-    
     uint32_t offset = this->getOffset(addr);//block块内的偏移
     this->statistics.numHit++;
     this->statistics.totalCycles += this->policy.hitLatency;//找到了因此只需要加一个命中的缓存
     this->blocks[blockId].lastReference = this->referenceCounter;
-    if (cycles) *cycles = this->policy.hitLatency;
+    if (cycles){*cycles = this->policy.hitLatency;} 
     return this->blocks[blockId].data[offset];
   }
+  // Else, find the data in memory or other level of cache or bypass
 
-  // Else, find the data in memory or other level of cache
+  if(this->samplerExist){//模拟L2 cache有sampler
+    uint32_t setID=getIdForSampler(addr);
+    uint32_t tag=getTagForSampler(addr);
+    if ((setID%64==0)){//访问到sampler之中的set
+      //std::cout<<setID/64<<"||"<<(tag&((1<<samplerPartialTagBits)-1))<<"||"<<((memory->pc)&((1<<samplerPartialPCBits)-1))<<"||"<<std::endl;
+      this->s->access(setID/64,tag,memory->pc);//update,setID是要除以32，tag也要变成partial tag，PC变成partial PC
+    }else{//访问到其他set，那么直接去predictor table里面找
+      bool dead=this->s->pred->getPrediction((memory->pc)&((1<<samplerPartialPCBits)-1),setID);
+      if(!dead){//non dead block
+      }else{//dead block
+        return this->lowerCache->getByte(addr, cycles);//直接从L3之中返回要找的byte
+      }
+    }
+  }
+  
   this->statistics.numMiss++;
   this->statistics.totalCycles += this->policy.missLatency;//没找到因此需要加一个未命中的缓存
-  this->loadBlockFromLowerLevel(addr, cycles);//从下一级cache或memory找，这里存在着问题！！！！！！
+  this->loadBlockFromLowerLevel(addr, cycles);//从下一级cache或memory找
+
 
   // The block is in top level cache now, return directly
   if ((blockId = this->getBlockId(addr)) != -1) {//和最上面的一模一样
@@ -106,9 +124,22 @@ void Cache::setByte(uint32_t addr, uint8_t val, uint32_t *cycles) {
 
   // Else, load the data from cache
   // TODO: implement bypassing
-  this->statistics.numMiss++;
-  this->statistics.totalCycles += this->policy.missLatency;//需要加一个未命中的缓存的时间
 
+  if(this->samplerExist){//模拟L2 cache有sampler
+    uint32_t setID=getIdForSampler(addr);
+    uint32_t tag=getTagForSampler(addr);
+      if ((setID%64==0)){//访问到sampler之中的set
+        this->s->access(setID/64,tag,memory->pc);//update,setID是要除以32，tag也要变成partial tag，PC变成partial PC
+      }else{//访问到其他set，那么直接去predictor table里面找
+        bool dead=this->s->pred->getPrediction((memory->pc)&((1<<samplerPartialPCBits)-1),setID);
+        if(!dead){//non dead block
+        }else{//dead block
+          return this->lowerCache->setByte(addr, val, cycles);//直接在L3之中进行修改
+        }
+      }
+  }
+  this->statistics.numMiss++;
+  this->statistics.totalCycles += this->policy.missLatency;//没找到因此需要加一个未命中的缓存
   if (this->writeAllocate) {//写分配，因此需要读到cache之中
     this->loadBlockFromLowerLevel(addr, cycles);//读到cache之中
 
@@ -328,6 +359,20 @@ uint32_t Cache::getId(uint32_t addr) {
   return (addr >> offsetBits) & mask;
 }
 
+uint32_t Cache::getIdForSampler(uint32_t addr) {
+  uint32_t offsetBits = log2i(this->lowerCache->policy.blockSize);
+  uint32_t idBits = log2i(this->lowerCache->policy.blockNum / this->lowerCache->policy.associativity);
+  uint32_t mask = (1 << idBits) - 1;
+  return (addr >> offsetBits) & mask;
+}
+
+uint32_t Cache::getTagForSampler(uint32_t addr) {
+  uint32_t offsetBits = log2i(this->lowerCache->policy.blockSize);
+  uint32_t idBits = log2i(this->lowerCache->policy.blockNum / this->lowerCache->policy.associativity);
+  uint32_t mask = (1 << idBits) - 1;
+  return (addr >> offsetBits) & mask;
+}
+
 uint32_t Cache::getOffset(uint32_t addr) {
   uint32_t bits = log2i(policy.blockSize);
   uint32_t mask = (1 << bits) - 1;
@@ -338,4 +383,127 @@ uint32_t Cache::getAddr(Cache::Block &b) {
   uint32_t offsetBits = log2i(policy.blockSize);
   uint32_t idBits = log2i(policy.blockNum / policy.associativity);
   return (b.tag << (offsetBits + idBits)) | (b.id << offsetBits);
+}
+
+
+
+//##################################################################//
+uint32_t mix (uint32_t a, uint32_t b, uint32_t c) {
+    a=a-b; a=a-c; a=a^(c >> 13);
+    b=b-c; b=b-a; b=b^(a >> 8);
+    c=b-a; c=c-b; c=c^(b >> 13);
+    return c;
+};
+
+unsigned int f1 (uint32_t x) {
+    return mix (0xfeedface, 0xdeadb10c, x);
+};
+
+unsigned int f2 (uint32_t x) {
+    return mix (0xc001d00d, 0xfade2b1c, x);
+};
+
+unsigned int fi (uint32_t x, uint32_t i) {
+    return f1(x) + (f2(x) >> i);
+};
+
+uint32_t predictor::getTableIndex( uint32_t partialPC, uint32_t tableNum) { //  partialPC 和 table number
+    uint32_t x = fi (partialPC, tableNum);
+    return x & ((1<<predictorIndexBits)-1);//mapping 到table上
+}
+
+void predictor::updateTable ( uint32_t partialPC, bool dead) {
+    for (int i=0; i<predictorTableNum; i++) {//每一个table对应的表项都要加一或者减一
+        int *c = &tables[i][getTableIndex(partialPC, i)]; // address of corres. entry in table
+        if(dead) {//反向学习
+            if(*c < counter_max) (*c)++;
+        } else { // 正向学习
+            if (*c > 0) (*c)--; 
+        }
+    }
+}
+
+bool predictor::getPrediction (uint32_t partialPC, uint32_t set) {//从三个table之中qu
+    int confidence = 0;
+    for (int i=0; i<predictorTableNum; i++) {
+        int val = tables[i][getTableIndex(partialPC, i)];
+        confidence += val;
+    }
+    return confidence >= threshold;
+}
+
+uint32_t make_trace (predictor *pred, uint32_t PC) {
+    return PC & ((1<<samplerPartialPCBits)-1);
+};
+
+samplerSet::samplerSet (void) {
+    blocks = new samplerEntry[samplerAssociavity];
+    // initialize LRU replacement algorithm
+    for (uint32_t i=0; i<samplerAssociavity; i++) blocks[i].lru = i; // 0 means latest used
+}
+
+sampler::sampler() {
+    pred = new predictor(); // make a new predictor
+    sets = new samplerSet[32];//32
+}
+
+void sampler::access(uint32_t set, uint32_t tag, uint32_t PC) {//访问set
+    samplerEntry *blocks = &sets[set].blocks[0]; // set的第一个block
+    uint32_t partialTag = tag & ((1<<samplerPartialTagBits)-1); // low-order15位的partial tag
+    int i; // 对应位置上的block是我们要找的活着要替换的
+    // search for matching tag
+   
+    for(i=0; i<samplerAssociavity; i++) {
+        if(blocks[i].valid && (blocks[i].partialTag == partialTag)) {
+            // we know this block is not dead; inform the predictor
+            pred->updateTable( blocks[i].partialPC, false);//在predictor table之中声明这个不是dead block
+        }
+    }
+
+    // 找不到的话就会有一个块dead，那么i就是要替换的block
+    if(i == samplerAssociavity) {
+        // 先从non-valid里面找一个
+        for (i=0; i<samplerAssociavity; i++) if(blocks[i].valid == false) break;
+        // 再从prediction dead里面找一个
+        if(i==samplerAssociavity) {
+            for(i=0; i<samplerAssociavity; i++) 
+              if(blocks[i].predictonDead){
+                break;
+              } //prediction表示这个块被预测位dead块
+        }
+        // 最后LRU找一个
+        if(i == samplerAssociavity) {
+            int j;
+            for(j=0; j<samplerAssociavity; j++) {
+                if(blocks[j].lru == (uint32_t) (samplerAssociavity - 1)) break;
+            }
+            assert(j < samplerAssociavity);
+            i = j;
+        }
+
+        // 告诉predictor，这个partial PC对应的block 可能是dead的
+        pred->updateTable( blocks[i].partialPC, true);//通知predictor table这个块是dead block
+        // 新的block替进来
+        blocks[i].partialTag = partialTag;
+        blocks[i].valid = true;
+    }
+    // 新的block替进来
+    blocks[i].partialPC = make_trace( pred, PC);//trace就是partial PC
+    // 更新block对应的predictor table，无论击中或者没有击中
+    blocks[i].predictonDead = pred->getPrediction( blocks[i].partialTag, -1);//更新这个block的prediction
+    // 修改LRU
+    uint32_t position = blocks[i].lru;
+    for(uint32_t way=0; way<samplerAssociavity; way++) {
+        if(blocks[way].lru < position) blocks[way].lru++;
+    }
+    blocks[i].lru = 0;
+    //sampler的替换起始没有替，只有换。是将sampler cache set里的block直接换出去，将新的换进来
+}
+
+predictor::predictor(void) {
+    tables = new int* [predictorTableNum]; // 为了减少hash冲突，我们有三个predictor table
+    for(uint32_t i=0; i<predictorTableNum; i++) {// 初始化每一个predictor table里的每一项
+        tables[i] = new int[predictorTableEntryNum];
+        memset(tables[i], 0, sizeof(int)*predictorTableEntryNum);
+    }
 }

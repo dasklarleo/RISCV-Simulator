@@ -129,10 +129,8 @@ void Simulator::simulate() {
     
     this->excecute(executeMemReserv);
     memoryMemReserv=setCopy(executeMemReserv,memoryMemReserv);
-    
     this->memoryAccess(memoryMemReserv);
     writebackMemReserv=setCopy(memoryMemReserv,writebackMemReserv);
-
     this->writeBack(writebackMemReserv);
     decodeMemReserv=setCopy(writebackMemReserv,decodeMemReserv);
 
@@ -1104,7 +1102,7 @@ void Simulator::excecute(std::set<int64_t> &exeMemeReserv) {
 }
 
 void Simulator::memoryAccess(std::set<int64_t> &memMemeReserv) {
-
+  
   if (this->eReg.stall) {
     if (verbose) {
       printf("Memory Access: Stall\n");
@@ -1120,6 +1118,7 @@ void Simulator::memoryAccess(std::set<int64_t> &memMemeReserv) {
   }
 
   uint64_t eRegPC = this->eReg.pc;
+  this->memory->pc=this->eReg.pc;
   Inst inst = this->eReg.inst;
   bool writeReg = this->eReg.writeReg;
   RegId destReg = this->eReg.destReg;
@@ -1136,6 +1135,7 @@ void Simulator::memoryAccess(std::set<int64_t> &memMemeReserv) {
   if(writeMem){
     switch (memLen) {
         case 1:
+        if(!cycles)printf("NULL");
           good = this->memory->setByte(out, op2, &cycles);
           break;
         case 2:
@@ -1346,6 +1346,7 @@ int64_t Simulator::handleSystemCall(int64_t op1, int64_t op2) {
       this->dumpHistory();
     }
     this->printStatistics();
+    this->memory->printStatistics();
     exit(0);
   case 4: // read char
     scanf(" %c", (char*)&op1);

@@ -18,6 +18,7 @@ class Cache;
 class MemoryManager
 {
 public:
+  uint64_t pc;
   MemoryManager();
   ~MemoryManager();
 

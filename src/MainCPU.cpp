@@ -45,25 +45,27 @@ int main(int argc, char **argv) {
   l1Policy.cacheSize = 1024;
   l1Policy.blockSize = 64;
   l1Policy.blockNum = l1Policy.cacheSize / l1Policy.blockSize;
-  l1Policy.associativity = 8;
+  l1Policy.associativity = 2;
   l1Policy.hitLatency = 2;
   l1Policy.missLatency = 8;
 
-  l2Policy.cacheSize = 32 *1024;
+  l2Policy.cacheSize = 4 *1024;
   l2Policy.blockSize = 64;
   l2Policy.blockNum = l2Policy.cacheSize / l2Policy.blockSize;
-  l2Policy.associativity = 16;
+  l2Policy.associativity = 4;
   l2Policy.hitLatency = 8;
-  l2Policy.missLatency = 20;
+  l2Policy.missLatency = 40;
 
-  l3Policy.cacheSize = 32 * 1024*1024;
+  l3Policy.cacheSize = 2 * 1024*1024;
   l3Policy.blockSize = 64;
   l3Policy.blockNum = l3Policy.cacheSize / l3Policy.blockSize;
-  l3Policy.associativity = 32;
-  l3Policy.hitLatency = 20;
+  l3Policy.associativity = 16;
+  l3Policy.hitLatency = 40;
   l3Policy.missLatency = 100;
+  sampler s;//不要直接sampler *s 这样的话没有真正的在内存声明sampler这个结构体
 
   l3Cache = new Cache(&memory, l3Policy,false, nullptr);
+  //l2Cache = new Cache(&memory, l2Policy,false, l3Cache,true,true,true,&s);
   l2Cache = new Cache(&memory, l2Policy,false, l3Cache);
   l1Cache = new Cache(&memory, l1Policy,false, l2Cache);
 
@@ -98,7 +100,7 @@ int main(int argc, char **argv) {
     printf("Dumping history to dump.txt...\n");
     simulator.dumpHistory();
   }
-
+  
   delete l1Cache;
   delete l2Cache;
   delete l3Cache;

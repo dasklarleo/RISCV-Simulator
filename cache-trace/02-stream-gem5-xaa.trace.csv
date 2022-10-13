@@ -1,2 +1,2 @@
 cacheSize,blockSize,associativity,writeBack,writeAllocate,missRate,totalCycles
-32768,64,8,1,1,0.457789,1369288
+32768,64,8,1,1,0.457789,971848

@@ -126,17 +126,17 @@ void simulateCache(std::ofstream &csvFile, uint32_t cacheSize,
   l3policy.associativity = 8;
   l3policy.hitLatency = 20;
   l3policy.missLatency = 100;
-
+  sampler s;
   // Initialize memory and cache
   MemoryManager *memory = nullptr;//MemoryManager类的声明，MemoryManager类用于和CPU模拟器交互
   Cache * l1cache = nullptr;
   Cache * l2cache = nullptr;
   Cache * l3cache = nullptr;
   memory = new MemoryManager();
-  
-  l3cache = new Cache(memory,l3policy,true, nullptr, writeBack, writeAllocate);//顺序反过来就错了
-  l2cache = new Cache(memory, l2policy,true,l3cache , writeBack, writeAllocate);
-  l1cache = new Cache(memory,l1policy,true, l2cache, writeBack, writeAllocate);
+    
+  l3cache = new Cache(memory,l3policy,false, nullptr, writeBack, writeAllocate);//顺序反过来就错了
+  l2cache = new Cache(memory, l2policy,false,l3cache , writeBack, writeAllocate);
+  l1cache = new Cache(memory,l1policy,false, l2cache, writeBack, writeAllocate);
   memory->setCache(l1cache);
 
   l1cache->printInfo(false);

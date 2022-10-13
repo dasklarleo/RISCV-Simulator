@@ -19,7 +19,7 @@ samplerSet::samplerSet (void) {
     for (uint32_t i=0; i<samplerAssociavity; i++) blocks[i].lru = i; // 0 means latest used
 }
 
-sampler::sampler(int nsets, int associativaty) {
+sampler::sampler() {
     pred = new predictor(); // make a new predictor
     sets = new samplerSet[32];//32
 }

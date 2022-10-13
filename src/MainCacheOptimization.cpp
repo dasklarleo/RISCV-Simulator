@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
   MemoryManager *memory = nullptr;
   Cache *l1cache = nullptr, *l2cache = nullptr, *l3cache = nullptr;
   memory = new MemoryManager();
-  l3cache = new Cache(memory, l2policy,true);
+  l3cache = new Cache(memory, l3policy,true);
   l2cache = new Cache(memory, l2policy,true,l3cache);
   l1cache = new Cache(memory, l1policy,true, l2cache);
   memory->setCache(l1cache);
