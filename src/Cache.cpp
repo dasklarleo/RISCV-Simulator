@@ -115,6 +115,11 @@ void Cache::setByte(uint32_t addr, uint8_t val, uint32_t *cycles) {
     this->blocks[blockId].lastReference = this->referenceCounter;//LRU
     this->blocks[blockId].data[offset] = val;//偏移
     if (!this->writeBack) {//writeThrough，就直接写到这一级和下一级
+      if(this->exclusion){
+        this->memory->setByte(addr, val,cycles);
+        this->statistics.totalCycles += this->policy.missLatency;//访问了下一级，因此需要加一个未命中的缓存的时间
+        return;
+      }
       this->writeBlockToLowerLevel(this->blocks[blockId]);
       this->statistics.totalCycles += this->policy.missLatency;//访问了下一级，因此需要加一个未命中的缓存的时间
     }
