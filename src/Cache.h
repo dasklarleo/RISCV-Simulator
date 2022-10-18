@@ -12,10 +12,10 @@
 # define  samplerPartialPCBits 16
 # define  predictorTableNum 3
 # define  predictorIndexBits  18
-# define  samplerAssociavity  12
+# define  samplerAssociavity  4
 
 # define  predictorTableEntryNum  1 << predictorIndexBits
-# define counterWidth  2
+# define  counterWidth  2
 # define  counter_max  (1 << counterWidth) - 1
 # define  threshold  8
 
@@ -49,7 +49,7 @@ struct predictor{
     predictor(void);
     uint32_t getTableIndex(uint32_t partialPC, uint32_t tableNum);//根据PC，先将其通过hash映射到table长度。再在对应的tableNum之中找到映射后对应的index
     void updateTable(uint32_t partialPC, bool dead);////根据sampler命中与否，更新table
-    bool getPrediction(uint32_t partialPC, uint32_t set);//访问到了不在sampler之中的set的时候，返回预测的结果
+    bool getPrediction(uint32_t partialPC);//访问到了不在sampler之中的set的时候，返回预测的结果
 };
 
 struct sampler {
@@ -64,7 +64,7 @@ unsigned int mix (uint32_t a, uint32_t b, uint32_t c);
 unsigned int f1 (uint32_t x);
 unsigned int f2 (uint32_t x);
 unsigned int fi (uint32_t x, uint32_t i);
-unsigned int make_trace ( predictor *pred, uint32_t PC);
+unsigned int make_trace ( uint64_t PC);
 
 class MemoryManager;
 
@@ -88,6 +88,7 @@ public:
     uint32_t size;
     uint32_t lastReference;
     std::vector<uint8_t> data;
+    uint32_t trace;
     Block() {}
     Block(const Block &b)
         : valid(b.valid), modified(b.modified), tag(b.tag), id(b.id),
@@ -104,7 +105,7 @@ public:
     uint64_t totalCycles;
   };
 
-  Cache(MemoryManager *manager, Policy policy,bool exclusion, Cache *lowerCache = nullptr,bool writeBack = true, bool writeAllocate = true,bool samplerExist=false,sampler *s=nullptr);
+  Cache(MemoryManager *manager, Policy policy,bool exclusion, Cache *lowerCache = nullptr,bool writeBack = true, bool writeAllocate = true,sampler *s=nullptr,bool SDBP=false);
 
   bool inCache(uint32_t addr);
   uint32_t getBlockId(uint32_t addr);
@@ -124,7 +125,7 @@ private:
   bool writeAllocate; // default true
   bool exclusion;     //default false
   bool samplerExist;//default false
-
+  bool SDBP;
   MemoryManager *memory;
   Cache *lowerCache;
   Policy policy;

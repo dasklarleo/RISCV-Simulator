@@ -30,6 +30,7 @@ MemoryManager::~MemoryManager() {
   }
 }
 
+
 bool MemoryManager::addPage(uint32_t addr) {
   uint32_t i = this->getFirstEntryId(addr);
   uint32_t j = this->getSecondEntryId(addr);
@@ -50,6 +51,13 @@ bool MemoryManager::addPage(uint32_t addr) {
 bool MemoryManager::isPageExist(uint32_t addr) {
   return this->isAddrExist(addr);
 }
+void MemoryManager::setMemory(uint32_t addr,uint8_t val) {
+  uint32_t i = this->getFirstEntryId(addr);
+  uint32_t j = this->getSecondEntryId(addr);
+  uint32_t k = this->getPageOffset(addr);
+  this->memory[i][j][k]=val;
+}
+
 
 bool MemoryManager::copyFrom(const void *src, uint32_t dest, uint32_t len) {
   for (uint32_t i = 0; i < len; ++i) {

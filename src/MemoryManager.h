@@ -47,6 +47,7 @@ public:
   std::string dumpMemory();
 
   void setCache(Cache *cache);  
+  void setMemory(uint32_t addr,uint8_t val);  
 
 private:
   uint32_t getFirstEntryId(uint32_t addr);

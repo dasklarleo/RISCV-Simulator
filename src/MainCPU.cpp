@@ -38,37 +38,38 @@ int main(int argc, char **argv) {
     printUsage();
     exit(-1);
   }
+  
 
   // Init cache
   Cache::Policy l1Policy, l2Policy, l3Policy;
 
-  l1Policy.cacheSize = 1024;
+  l1Policy.cacheSize = 256;
   l1Policy.blockSize = 64;
   l1Policy.blockNum = l1Policy.cacheSize / l1Policy.blockSize;
-  l1Policy.associativity = 2;
+  l1Policy.associativity = 1;
   l1Policy.hitLatency = 2;
   l1Policy.missLatency = 8;
 
-  l2Policy.cacheSize = 4 *1024;
+  l2Policy.cacheSize = 1024;
   l2Policy.blockSize = 64;
   l2Policy.blockNum = l2Policy.cacheSize / l2Policy.blockSize;
-  l2Policy.associativity = 4;
+  l2Policy.associativity = 1;
   l2Policy.hitLatency = 8;
   l2Policy.missLatency = 40;
 
-  l3Policy.cacheSize = 2 * 1024*1024;
+  l3Policy.cacheSize = 2*1024*1024;
   l3Policy.blockSize = 64;
   l3Policy.blockNum = l3Policy.cacheSize / l3Policy.blockSize;
-  l3Policy.associativity = 16;
+  l3Policy.associativity = 4;
   l3Policy.hitLatency = 40;
   l3Policy.missLatency = 100;
   sampler s;//不要直接sampler *s 这样的话没有真正的在内存声明sampler这个结构体
-
-  l3Cache = new Cache(&memory, l3Policy,false, nullptr);
-  //l2Cache = new Cache(&memory, l2Policy,false, l3Cache,true,true,true,&s);
+  //l3Cache = new Cache(&memory, l3Policy,false, nullptr);
+  l3Cache = new Cache(&memory, l3Policy,false, nullptr,true,true,&s,true);
+  
   l2Cache = new Cache(&memory, l2Policy,false, l3Cache);
   l1Cache = new Cache(&memory, l1Policy,false, l2Cache);
-
+  
   memory.setCache(l1Cache);
 
   // Read ELF file
