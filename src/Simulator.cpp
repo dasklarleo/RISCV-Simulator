@@ -1046,7 +1046,7 @@ void Simulator::excecute(std::set<int64_t> &exeMemeReserv) {
       this->history.controlHazardCount++;
     }
     // this->dReg.pc: fetch original inst addr, not the modified one
-    this->branchPredictor->update(this->dReg.pc, branch);
+    this->branchPredictor->update(this->dReg.pc, branch,predictedBranch);
   }
   if (isJump(inst)) {
     // Control hazard here
