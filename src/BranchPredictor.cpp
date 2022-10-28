@@ -4,21 +4,21 @@
 
 #include "BranchPredictor.h"
 #include "Debug.h"
-
+#include <iostream>
 BranchPredictor::BranchPredictor() {
   for (int i = 0; i < PRED_BUF_SIZE; ++i) {
     this->predbuf[i] = WEAK_TAKEN;
   }
-  if(this->strategy==DBP){
-    this->historyRegister[0]=1;//0 is always 1
-    for(int32_t i=0;i<30;i++){
-      for(int32_t j=0;i<35;j++){
-        this->weightArray[i].push_back(0);//weights are initialized with 0
+    this->historyRegister[0]=(1);//0 is always 1
+    for(int i=0; i<29; i++){
+      for(int j=0;j<35;j++){
+        this->weightArray[i][j]=1;//weights are initialized with 0
+        this->historyRegister[j]=0;
       }
     }
+    for(int i=0;i<35;i++)
+      this->historyRegister[i]=1;
     this->threshold=79;
-  }
-  
 }
 
 BranchPredictor::~BranchPredictor() {}
@@ -49,10 +49,10 @@ bool BranchPredictor::predict(uint32_t pc, uint32_t insttype, int64_t op1,
     }   
   }
   break;
-  case DBP:{
+  case PERCEPTRON:{
     //TO BE DONE
     //1. calculate the product of weights and the historyRegister this->innerProduct
-    uint32_t innerProductValue=this->innerProduct(pc);
+    int innerProductValue=this->innerProduct(pc);
     //2. give the prediction if(product<0)... if (product>0)...
     if(innerProductValue>0) return true;
     else return false;
@@ -65,10 +65,10 @@ bool BranchPredictor::predict(uint32_t pc, uint32_t insttype, int64_t op1,
 }
 
 int32_t BranchPredictor::innerProduct(uint32_t pc){//calculate the inner product
-  uint32_t innerProductvalue=0;//return value
-  uint32_t index=pc%30;
+  int innerProductvalue=0;//return value
+  uint32_t index=pc%29;
   for(int i=0;i<35;i++){
-    innerProductvalue=innerProductvalue+(this->weightArray[index][i]*this->historyRegister[i]);
+    innerProductvalue=innerProductvalue+((this->weightArray[index][i])*(this->historyRegister[i]));
   }
   return innerProductvalue;
 }
@@ -76,6 +76,9 @@ int32_t BranchPredictor::innerProduct(uint32_t pc){//calculate the inner product
 void BranchPredictor::update(uint32_t pc, bool branch,bool predictedBranch) {
   int id = pc % PRED_BUF_SIZE;
   PredictorState state = this->predbuf[id];
+  uint32_t index=pc%29;
+  int t=0;
+  int i=0;
   switch (this->strategy)
   {
   case BPB:
@@ -97,26 +100,26 @@ void BranchPredictor::update(uint32_t pc, bool branch,bool predictedBranch) {
       } // do noting if STRONG_NOT_TAKEN
   }
   break;
-  case DBP:
+  case PERCEPTRON:
     //1. acquire the pc index (modify it by the 30)
-    uint32_t index=pc%30;
-    uint32_t t=0;
-    if(branch!=predictedBranch||(innerProduct(pc)>(-this->threshold)&&innerProduct(pc)<(this->threshold))){
+    if((branch!=predictedBranch)||(innerProduct(pc)>(-this->threshold)&&innerProduct(pc)<(this->threshold))){
     //2. update the weight array wi=wi+xi(branch) wi=wi-xi(not branch)
       if (branch==true){//+
         t=1;
       }else{//-
         t=-1;
       }
-      for(int i=0;i<35;i++){
+      for(i=0;i<35;i++){
+        if(this->weightArray[index][i]+t*historyRegister[i]>-128&&this->weightArray[index][i]+t*historyRegister[i]<127)
         this->weightArray[index][i]=this->weightArray[index][i]+t*historyRegister[i];
       }
     }
     //3.update the history register, history bit 0 is always 1
-    for (int i=34;i>0;i--){
+    for (i=34;i>0;i--){
       historyRegister[i]=historyRegister[i-1];//update
     }
     historyRegister[1]=t;
+    break;
   default:
     break;
   }
@@ -134,7 +137,7 @@ std::string BranchPredictor::strategyName() {
     return "Back Taken Forward Not Taken";
   case BPB:
     return "Branch Prediction Buffer";
-  case DBP:
+  case PERCEPTRON:
     return "Dynamic Branch Prediction";
   default:
     dbgprintf("Unknown Branch Perdiction Strategy!\n");

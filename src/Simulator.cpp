@@ -706,6 +706,7 @@ void Simulator::decode(std::set<int64_t> &decodeMemeReserv) {
 
   bool predictedBranch = false;
   if (isBranch(insttype)) {
+    
     predictedBranch = this->branchPredictor->predict(this->fReg.pc, insttype,
                                                      op1, op2, offset);
     if (predictedBranch) {

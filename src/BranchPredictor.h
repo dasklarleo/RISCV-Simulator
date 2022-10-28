@@ -23,7 +23,7 @@ public:
     NT, // Always Not Taken
     BTFNT, // Backward Taken, Forward Not Taken
     BPB, // Branch Prediction Buffer with 2bit history information
-    DBP,//dynamic branch prediction
+    PERCEPTRON,//dynamic branch prediction
   } strategy;
 
   BranchPredictor();
@@ -34,7 +34,7 @@ public:
 
   // For Branch Prediction Buffer 
   void update(uint32_t pc, bool branch,bool predictedBranch);
-  int32_t BranchPredictor::innerProduct(uint32_t pc);
+  int32_t innerProduct(uint32_t pc); 
 
   std::string strategyName();
   
@@ -43,9 +43,9 @@ private:
     STRONG_TAKEN = 0, WEAK_TAKEN = 1,
     STRONG_NOT_TAKEN = 3, WEAK_NOT_TAKEN = 2,
   } predbuf[PRED_BUF_SIZE]; // initial state: WEAK_TAKEN
-  std::bitset<35> historyRegister;
-  std::vector<std::vector<uint8_t> > weightArray;
-  uint32_t threshold;
+  int historyRegister[35];
+  int8_t weightArray[29][35];
+  int threshold;
 };
 
 #endif
